@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tu Glamur - ERP POS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = { theme: { extend: { colors: { glamur: { light: '#9d4edd', DEFAULT: '#5a189a', dark: '#3c096c', gold: '#ffb703', bg: '#f8f9fa' } } } } }
+    </script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .gold-gradient { background: linear-gradient(135deg, #ffb703 0%, #fb8500 100%); }
+        #reader, #readerAddProduct { width: 100%; max-width: 400px; margin: 0 auto; border-radius: 12px; overflow: hidden; }
+        #reader video, #readerAddProduct video { border-radius: 12px; object-fit: cover; }
+        .bottom-nav-scroll::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 h-screen flex flex-col font-sans">
+
+    <header class="bg-glamur text-white p-4 shadow-md flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-gem text-glamur-gold text-xl"></i><h1 class="text-xl font-bold tracking-wide">Tu Glamur</h1>
+        </div>
+        <div class="text-xs bg-glamur-dark px-2 py-1 rounded text-glamur-gold font-semibold transition-all" id="cloudStatus"><i class="fas fa-server mr-1"></i> Local</div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto p-4 pb-24">
+        
+        <!-- DASHBOARD -->
+        <section id="tab-dashboard" class="tab-content active">
+            <h2 class="font-bold text-xl text-glamur-dark mb-4">Dashboard</h2>
+            
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500">
+                    <p class="text-[10px] text-gray-500 font-bold uppercase">Ingresos Reales</p>
+                    <p class="text-xl font-black text-green-600 mt-1" id="dashVentas">$0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-500">
+                    <p class="text-[10px] text-gray-500 font-bold uppercase">Por Cobrar (Fiado)</p>
+                    <p class="text-xl font-black text-red-500 mt-1" id="dashDeuda">$0</p>
+                </div>
+            </div>
+
+            <!-- MÓDULO DEUDAS / FIADOS -->
+            <div class="bg-red-50 rounded-xl shadow-sm p-4 mb-4 border border-red-100">
+                <h3 class="font-bold text-red-700 mb-3 border-b border-red-200 pb-2"><i class="fas fa-hand-holding-usd mr-2"></i>Cuentas por Cobrar</h3>
+                <ul id="dashDebtorsList" class="space-y-2 text-sm max-h-60 overflow-y-auto pr-1"></ul>
+            </div>
+
+            <!-- GRÁFICO DE VENTAS MENSUALES -->
+            <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+                <h3 class="font-bold text-gray-700 mb-2 text-sm">Ventas Mensuales</h3>
+                <div class="relative h-28"><canvas id="chartSales"></canvas></div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm p-4 mb-4"><h3 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fas fa-trophy text-glamur-gold mr-2"></i>Top 5 Más Vendidos</h3><ul id="dashTopProducts" class="space-y-2 text-sm"></ul></div>
+            <div id="dashAlerts" class="mb-4 space-y-2"></div>
+        </section>
+
+        <!-- PUNTO DE VENTA -->
+        <section id="tab-vender" class="tab-content">
+            <div class="bg-white rounded-xl shadow-sm p-4 mb-4 text-center">
+                <button id="btnStartScanner" class="w-full bg-glamur text-white py-3 rounded-lg font-bold text-lg mb-4 shadow-lg active:scale-95 flex items-center justify-center gap-2"><i class="fas fa-camera text-xl text-glamur-gold"></i> Escanear (Modo Macro)</button>
+                <div id="reader" class="hidden mb-4 border-2 border-glamur-light"></div>
+                <button id="btnStopScanner" class="hidden w-full bg-red-500 text-white py-2 rounded-lg font-bold mb-4">Detener Cámara</button>
+                
+                <div class="flex items-center gap-2 mb-2"><hr class="flex-1 border-gray-200"><span class="text-[10px] text-gray-400 font-semibold uppercase">O buscar</span><hr class="flex-1 border-gray-200"></div>
+                
+                <div class="flex gap-2 items-end relative">
+                    <div class="flex-1 text-left relative">
+                        <input type="text" id="posSearchInput" placeholder="Buscar nombre, marca o código..." class="w-full border-2 border-gray-200 p-2 rounded-lg focus:border-glamur outline-none text-sm bg-white" oninput="filterPOSProducts(this.value)">
+                        <!-- DROPDOWN FLOTANTE PARA CELULAR Y PC -->
+                        <div id="posDropdown" class="absolute left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto z-50 hidden"></div>
+                    </div>
+                    <div class="w-16 text-left"><input type="number" id="posQty" value="1" min="1" class="w-full border-2 border-gray-200 p-2 rounded-lg text-center font-bold outline-none focus:border-glamur"></div>
+                    <button onclick="addSelectedToCart()" class="bg-glamur-gold text-glamur-dark px-4 py-2 rounded-lg font-bold shadow-md active:scale-95 h-[42px]"><i class="fas fa-plus"></i></button>
+                </div>
+                <input type="hidden" id="posSelectedId">
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm p-4">
+                <div class="flex justify-between items-center mb-2 border-b pb-2"><h2 class="font-bold text-glamur-dark"><i class="fas fa-shopping-bag mr-1"></i> Carrito (<span id="cartCount">0</span>)</h2></div>
+                <div id="cartList" class="space-y-2 max-h-40 overflow-y-auto mb-3 min-h-[80px]"></div>
+                
+                <div class="flex justify-between items-end mb-4"><span class="text-gray-500 font-bold">Total:</span><span id="cartTotal" class="text-3xl font-bold text-glamur-dark">$0</span></div>
+                <button onclick="openCheckout()" class="w-full gold-gradient text-glamur-dark py-3 rounded-lg font-bold shadow-lg active:scale-95 flex justify-center items-center gap-2"><i class="fas fa-arrow-right"></i> Cobrar</button>
+            </div>
+        </section>
+
+        <!-- STOCK -->
+        <section id="tab-stock" class="tab-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="font-bold text-xl text-glamur-dark">Inventario</h2>
+                <div class="flex gap-2">
+                    <button onclick="promptInflation()" class="bg-red-500 text-white px-3 py-2 rounded-lg text-sm font-bold shadow-md active:scale-95" title="Aumentar Precios"><i class="fas fa-arrow-trend-up"></i></button>
+                    <button onclick="openProductModal()" class="bg-glamur text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md active:scale-95"><i class="fas fa-plus mr-1"></i> Nuevo</button>
+                </div>
+            </div>
+
+            <!-- MÉTRICAS DE STOCK -->
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
+                    <p class="text-[10px] text-gray-400 font-bold uppercase">Unidades / Vendidos</p>
+                    <p class="text-sm font-black text-gray-800 mt-0.5"><span id="metricUnits">0</span> un. | <span id="metricSold" class="text-purple-600">0</span> vend.</p>
+                </div>
+                <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
+                    <p class="text-[10px] text-gray-400 font-bold uppercase">Costo Total Stock</p>
+                    <p class="text-sm font-black text-red-600 mt-0.5" id="metricCost">$0</p>
+                </div>
+            </div>
+            <div class="bg-glamur-dark text-white p-3 rounded-xl shadow-sm mb-4 flex justify-between items-center">
+                <div>
+                    <p class="text-[10px] text-glamur-gold font-bold uppercase">Ganancia Potencial (Venta Total)</p>
+                    <p class="text-lg font-black" id="metricPotentialProfit">$0</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-[10px] text-gray-300 font-bold uppercase">Valor Venta Stock</p>
+                    <p class="text-sm font-bold text-white" id="metricSaleValue">$0</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div class="p-3 bg-gray-50 border-b relative">
+                    <i class="fas fa-search absolute left-6 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="searchStock" oninput="renderStock()" placeholder="Buscar por nombre, marca o código..." class="w-full border border-gray-200 rounded-lg py-2 pl-10 pr-3 outline-none focus:border-glamur text-sm">
+                </div>
+                <ul id="stockList" class="divide-y divide-gray-100 max-h-[50vh] overflow-y-auto"></ul>
+            </div>
+        </section>
+
+        <!-- CLIENTES -->
+        <section id="tab-clientes" class="tab-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="font-bold text-xl text-glamur-dark">Mis Clientes</h2>
+                <button onclick="openClientModal()" class="bg-glamur text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md active:scale-95"><i class="fas fa-user-plus mr-1"></i> Nuevo</button>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div class="p-3 bg-gray-50 border-b relative"><i class="fas fa-search absolute left-6 top-1/2 transform -translate-y-1/2 text-gray-400"></i><input type="text" id="searchClient" oninput="renderClients()" placeholder="Buscar cliente..." class="w-full border border-gray-200 rounded-lg py-2 pl-10 pr-3 outline-none focus:border-glamur text-sm"></div>
+                <ul id="clientList" class="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto"></ul>
+            </div>
+        </section>
+
+        <!-- AJUSTES -->
+        <section id="tab-ajustes" class="tab-content">
+            <h2 class="font-bold text-xl mb-4 text-glamur-dark">Ajustes del Sistema</h2>
+            
+            <div class="bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4 border-glamur-gold">
+                <h3 class="font-bold text-sm text-gray-700 mb-1">1. Apps Script URL (El Cerebro)</h3>
+                <p class="text-xs text-gray-500 mb-2">Pega aquí el enlace largo que te da Apps Script al implementar.</p>
+                <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/..." class="w-full border-2 border-gray-200 p-2 rounded-lg mb-3 text-xs outline-none focus:border-glamur font-mono">
+                
+                <h3 class="font-bold text-sm text-gray-700 mb-1">2. Google Sheets URL (Base de datos)</h3>
+                <p class="text-xs text-gray-500 mb-2">Pega aquí el enlace de tu planilla para abrirla rápido desde el celular.</p>
+                <input type="text" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/..." class="w-full border-2 border-gray-200 p-2 rounded-lg mb-3 text-xs outline-none focus:border-glamur font-mono">
+                
+                <div class="flex gap-2">
+                    <button onclick="saveSettings()" class="flex-1 bg-glamur text-white py-2 rounded-lg font-bold shadow-md text-sm active:scale-95">Guardar Enlaces</button>
+                    <button onclick="openSheet()" class="bg-green-500 text-white px-4 py-2 rounded-lg font-bold shadow-md text-sm active:scale-95"><i class="fas fa-table"></i> Ver BD</button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4 border-blue-500">
+                <h3 class="font-bold text-sm text-gray-700 mb-2">Sincronización Bidireccional Optimizada</h3>
+                <p class="text-xs text-gray-500 mb-3">Descarga rápida y unificada de todos tus datos desde Google Sheets.</p>
+                <button onclick="syncFromCloud()" class="w-full bg-blue-500 text-white py-3 rounded-lg font-bold shadow-md active:scale-95 flex justify-center items-center gap-2">
+                    <i class="fas fa-sync-alt"></i> Sincronizar Ahora
+                </button>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm p-4">
+                <button onclick="clearAllData()" class="w-full bg-red-100 text-red-600 py-2 rounded-lg font-bold text-sm active:bg-red-200"><i class="fas fa-trash mr-1"></i> Borrar Memoria del Celular</button>
+            </div>
+        </section>
+    </main>
+
+    <!-- NAVEGACIÓN INFERIOR -->
+    <nav class="bg-white border-t border-gray-200 fixed bottom-0 w-full flex overflow-x-auto bottom-nav-scroll p-2 pb-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40 justify-between">
+        <button onclick="switchTab('tab-dashboard', this)" class="nav-btn flex flex-col items-center text-glamur min-w-[20%]"><i class="fas fa-chart-pie text-lg mb-1"></i><span class="text-[9px] font-bold">Resumen</span></button>
+        <button onclick="switchTab('tab-vender', this)" class="nav-btn flex flex-col items-center text-gray-400 min-w-[20%]"><i class="fas fa-cash-register text-lg mb-1"></i><span class="text-[9px] font-bold">Vender</span></button>
+        <button onclick="switchTab('tab-stock', this)" class="nav-btn flex flex-col items-center text-gray-400 min-w-[20%]"><i class="fas fa-boxes text-lg mb-1"></i><span class="text-[9px] font-bold">Stock</span></button>
+        <button onclick="switchTab('tab-clientes', this)" class="nav-btn flex flex-col items-center text-gray-400 min-w-[20%]"><i class="fas fa-users text-lg mb-1"></i><span class="text-[9px] font-bold">Clientes</span></button>
+        <button onclick="switchTab('tab-ajustes', this)" class="nav-btn flex flex-col items-center text-gray-400 min-w-[20%]"><i class="fas fa-cog text-lg mb-1"></i><span class="text-[9px] font-bold">Ajustes</span></button>
+    </nav>
+
+    <!-- MODAL: CHECKOUT -->
+    <div id="checkoutModal" class="fixed inset-0 bg-black/60 hidden z-[55] flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden flex flex-col">
+            <div class="bg-glamur text-white p-3 flex justify-between items-center"><h3 class="font-bold">Finalizar Venta</h3><button onclick="closeModal('checkoutModal')" class="text-white/80 text-xl">&times;</button></div>
+            <div class="p-5">
+                <h2 class="text-3xl font-black text-center text-glamur-dark mb-4" id="checkTotal">$0</h2>
+                
+                <label class="text-xs font-bold text-gray-500 block mb-1">Cliente <span class="text-red-500">* Obligatorio</span></label>
+                <input type="text" id="checkClient" list="clientDataList" placeholder="Selecciona o escribe el cliente..." class="w-full border-2 border-gray-200 p-2 rounded-lg outline-none focus:border-glamur text-sm mb-3">
+                <datalist id="clientDataList"></datalist>
+                
+                <label class="text-xs font-bold text-gray-500 block mb-1">Método de Pago</label>
+                <select id="checkMethod" class="w-full border-2 border-gray-200 p-2 rounded-lg outline-none focus:border-glamur bg-white text-sm mb-3">
+                    <option value="Efectivo">💵 Efectivo</option><option value="Transferencia">📱 Transferencia</option><option value="Tarjeta">💳 Tarjeta</option>
+                </select>
+
+                <label class="text-xs font-bold text-gray-500 block mb-1">Monto que ABONA HOY ($)</label>
+                <input type="number" id="checkPagado" class="w-full border-2 border-green-300 p-3 rounded-lg outline-none focus:border-green-500 text-xl font-bold text-center text-green-600 mb-2" oninput="calcDeuda()">
+                
+                <div class="bg-red-50 p-2 rounded border border-red-100 text-center mb-4">
+                    <span class="text-xs font-bold text-red-500 uppercase">Queda debiendo:</span>
+                    <span class="text-lg font-bold text-red-600 block" id="checkDeuda">$0</span>
+                </div>
+
+                <button onclick="confirmSale()" class="w-full gold-gradient text-glamur-dark py-3 rounded-lg font-bold shadow-lg active:scale-95"><i class="fas fa-check-circle mr-1"></i> Registrar Venta</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: HISTORIAL DE COMPRAS DEL CLIENTE -->
+    <div id="clientHistoryModal" class="fixed inset-0 bg-black/60 hidden z-[65] flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="bg-glamur text-white p-3 flex justify-between items-center">
+                <h3 class="font-bold text-sm" id="clientHistoryTitle"><i class="fas fa-history mr-2"></i>Historial de Compras</h3>
+                <button onclick="closeModal('clientHistoryModal')" class="text-white/80 text-xl">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto space-y-3 flex-1" id="clientHistoryContent"></div>
+            <div class="p-3 bg-gray-50 border-t flex justify-between items-center">
+                <button onclick="editSelectedClientFromHistory()" class="bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-xs font-bold"><i class="fas fa-edit mr-1"></i> Editar Cliente</button>
+                <button onclick="closeModal('clientHistoryModal')" class="bg-glamur text-white px-4 py-2 rounded-lg text-xs font-bold">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: TICKET DE VENTA -->
+    <div id="ticketModal" class="fixed inset-0 bg-black/60 hidden z-[70] flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden p-5 text-center">
+            <div class="text-green-500 text-4xl mb-2"><i class="fas fa-check-circle"></i></div>
+            <h3 class="font-bold text-lg text-glamur-dark mb-1">¡Venta Exitosa!</h3>
+            <p class="text-xs text-gray-500 mb-3">El ticket está listo para compartir</p>
+            <div id="ticketPreview" class="bg-gray-50 p-3 rounded-xl border font-mono text-left text-xs space-y-1 mb-4 max-h-56 overflow-y-auto whitespace-pre-wrap"></div>
+            <div class="flex gap-2">
+                <button onclick="shareTicketWhatsApp()" class="flex-1 bg-green-500 text-white py-3 rounded-lg font-bold text-sm shadow-md active:scale-95 flex justify-center items-center gap-2"><i class="fab fa-whatsapp text-lg"></i> Enviar Ticket</button>
+                <button onclick="closeModal('ticketModal')" class="bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold text-sm">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: REGISTRAR PAGO DE DEUDA -->
+    <div id="payDebtModal" class="fixed inset-0 bg-black/60 hidden z-[55] flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden">
+            <div class="bg-green-500 text-white p-3 flex justify-between items-center"><h3 class="font-bold">Registrar Pago</h3><button onclick="closeModal('payDebtModal')" class="text-xl">&times;</button></div>
+            <div class="p-5 text-center">
+                <p class="text-sm text-gray-500 font-bold mb-1" id="payDebtClientName"></p>
+                <p class="text-xs mb-3">Deuda Total: <span class="font-bold text-red-500" id="payDebtTotal">$0</span></p>
+                
+                <label class="text-xs font-bold text-gray-500 block mb-1 text-left">Método de Cobro</label>
+                <select id="payDebtMethod" class="w-full border-2 border-gray-200 p-2 rounded-lg outline-none bg-white text-sm mb-3">
+                    <option value="Efectivo">💵 Efectivo</option><option value="Transferencia">📱 Transferencia</option><option value="Tarjeta">💳 Tarjeta</option>
+                </select>
+
+                <div class="mb-4 text-left">
+                    <label class="text-xs font-bold text-gray-500 block mb-1">Entregó ($)</label>
+                    <input type="number" id="payDebtAmount" class="w-full border-2 border-green-300 p-3 rounded-lg outline-none text-2xl font-bold text-center text-green-600">
+                </div>
+                <button onclick="processDebtPayment()" class="w-full bg-green-500 text-white py-3 rounded-lg font-bold shadow-lg active:scale-95">Aplicar Pago</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: PRODUCTO (CRUD) -->
+    <div id="productModal" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-glamur text-white p-3 flex justify-between items-center">
+                <h3 class="font-bold" id="productModalTitle">Producto</h3><button onclick="closeModal('productModal')" class="text-white/80 text-xl">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto">
+                <div id="readerAddProduct" class="hidden mb-3 border-2 border-glamur-light"></div>
+                <form id="formProduct" class="space-y-3">
+                    <input type="hidden" id="productId">
+                    <label class="block text-xs font-bold text-gray-500 mb-1">Código / SKU</label>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="startScannerAddProduct()" class="bg-gray-100 text-gray-700 px-3 rounded-lg border border-gray-300"><i class="fas fa-camera"></i></button>
+                        <input type="text" id="productBarcode" required oninput="checkExistingBarcode(this.value)" class="flex-1 border-2 border-gray-200 p-2 rounded-lg font-mono text-sm">
+                        <button type="button" onclick="document.getElementById('productBarcode').value='TG-'+Math.floor(10000+Math.random()*90000)" class="bg-gray-800 text-white px-2 rounded-lg text-xs font-bold"><i class="fas fa-dice"></i></button>
+                    </div>
+                    <div class="flex gap-2 mt-2">
+                        <div class="flex-1"><label class="block text-xs font-bold text-gray-500 mb-1">Marca</label><input type="text" id="productBrand" class="w-full border-2 border-gray-200 p-2 rounded-lg text-sm"></div>
+                        <div class="flex-1"><label class="block text-xs font-bold text-gray-500 mb-1">Categoría</label><select id="productCat" class="w-full border-2 border-gray-200 p-2 rounded-lg bg-white text-sm"><option>Maquillaje</option><option>Skincare</option><option>Accesorios</option></select></div>
+                    </div>
+                    <div class="flex gap-2">
+                        <div class="flex-1"><label class="block text-xs font-bold text-gray-500 mb-1">Nombre</label><input type="text" id="productName" required class="w-full border-2 border-gray-200 p-2 rounded-lg text-sm"></div>
+                        <div class="flex-1"><label class="block text-xs font-bold text-gray-500 mb-1">Variante</label><input type="text" id="productVar" class="w-full border-2 border-gray-200 p-2 rounded-lg text-sm" placeholder="Ej: Rojo / Talle M"></div>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded-lg border">
+                        <div class="flex gap-3">
+                            <div class="w-1/2"><label class="block text-xs font-bold text-gray-500 mb-1">Costo ($)</label><input type="number" id="productCost" required class="w-full border-2 border-gray-200 p-2 rounded-lg" oninput="autoCalculatePrice('productCost','productPrice','productMarginInfo')"></div>
+                            <div class="w-1/2"><label class="block text-xs font-bold text-gray-800 mb-1">P. Venta ($)</label><input type="number" id="productPrice" required class="w-full border-2 border-gray-800 p-2 rounded-lg font-bold bg-white text-glamur-dark" oninput="updateMarginInfo('productCost','productPrice','productMarginInfo')"></div>
+                        </div>
+                        <p id="productMarginInfo" class="text-xs font-bold mt-1 text-center h-4"></p>
+                    </div>
+                    <div class="flex gap-2">
+                        <div class="w-1/2"><label class="block text-xs font-bold text-gray-500 mb-1">Stock</label><input type="number" id="productStock" required min="0" class="w-full border-2 border-gray-200 p-2 rounded-lg text-center font-bold"></div>
+                        <div class="w-1/2"><label class="block text-xs font-bold text-gray-500 mb-1">Venc. <span class="font-normal">(DD/MM/AAAA)</span></label><input type="tel" inputmode="numeric" id="productExp" oninput="formatDate(event)" placeholder="DD/MM/AAAA" maxlength="10" class="w-full border-2 border-gray-200 p-2 rounded-lg text-sm text-center font-mono"></div>
+                    </div>
+                    <button type="submit" class="w-full bg-glamur text-white py-3 rounded-lg font-bold mt-2">Guardar Producto</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: CLIENTE (CRUD) -->
+    <div id="clientModal" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden flex flex-col">
+            <div class="bg-glamur text-white p-3 flex justify-between items-center"><h3 class="font-bold" id="clientModalTitle">Cliente</h3><button onclick="closeModal('clientModal')" class="text-xl">&times;</button></div>
+            <div class="p-5">
+                <form id="formClient" class="space-y-3">
+                    <input type="hidden" id="clientId">
+                    <div class="flex gap-2">
+                        <div class="flex-1"><label class="block text-xs font-bold text-gray-500 mb-1">Nombre</label><input type="text" id="clientFirstName" required class="w-full border-2 p-2 rounded-lg text-sm"></div>
+                        <div class="flex-1"><label class="block text-xs font-bold text-gray-500 mb-1">Apellido</label><input type="text" id="clientLastName" required class="w-full border-2 p-2 rounded-lg text-sm"></div>
+                    </div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">Teléfono</label><input type="tel" id="clientPhone" class="w-full border-2 p-2 rounded-lg text-sm"></div>
+                    <div><label class="block text-xs font-bold text-gray-500 mb-1">Cumpleaños <span class="font-normal">(DD/MM/AAAA)</span></label><input type="tel" inputmode="numeric" id="clientBday" oninput="formatDate(event)" placeholder="DD/MM/AAAA" maxlength="10" class="w-full border-2 p-2 rounded-lg text-sm text-center font-mono"></div>
+                    <button type="submit" class="w-full bg-glamur text-white py-3 rounded-lg font-bold mt-2 shadow-md">Guardar Cliente</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: ALERTAS -->
+    <div id="alertModal" class="fixed inset-0 bg-black/50 hidden z-[60] flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-xl shadow-2xl p-5 text-center transform scale-95 transition-transform duration-200" id="alertBox">
+            <div id="alertIcon" class="text-4xl mb-3"></div><h3 id="alertTitle" class="font-bold text-lg mb-2"></h3><p id="alertMessage" class="text-gray-600 text-sm mb-5"></p>
+            <button onclick="closeAlert()" class="w-full bg-gray-900 text-white py-2 rounded-lg font-bold">Aceptar</button>
+        </div>
+    </div>
+
+    <script>
+        let products = JSON.parse(localStorage.getItem('tg_products')) || [];
+        let sales = JSON.parse(localStorage.getItem('tg_sales')) || [];
+        let clients = JSON.parse(localStorage.getItem('tg_clients')) || [];
+        let cart = []; let html5QrcodeScanner = null; let chartSalesInstance = null;
+        let cartTotalMemo = 0; let activeDebtClient = ''; let lastTicketText = '';
+        let currentViewingClientId = null;
+
+        window.onload = () => { loadSettings(); renderDashboard(); renderStock(); renderClients(); }
+
+        function switchTab(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.getElementById(tabId).classList.add('active');
+            document.querySelectorAll('.nav-btn').forEach(b => { b.classList.remove('text-glamur'); b.classList.add('text-gray-400'); }); btn.classList.remove('text-gray-400'); btn.classList.add('text-glamur');
+            if(tabId === 'tab-dashboard') renderDashboard(); if(tabId === 'tab-stock') renderStock(); if(tabId === 'tab-clientes') renderClients(); if(html5QrcodeScanner) stopScanner();
+        }
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); if(html5QrcodeScanner) stopScanner(); }
+        function showAlert(type, title, msg) { const m = document.getElementById('alertModal'), i = document.getElementById('alertIcon'); i.innerHTML = type==='success'?'<i class="fas fa-check-circle text-green-500"></i>':type==='error'?'<i class="fas fa-times-circle text-red-500"></i>':'<i class="fas fa-exclamation-triangle text-glamur-gold"></i>'; document.getElementById('alertTitle').innerText = title; document.getElementById('alertMessage').innerText = msg; m.classList.remove('hidden'); setTimeout(() => document.getElementById('alertBox').classList.remove('scale-95'), 10); }
+        function closeAlert() { document.getElementById('alertBox').classList.add('scale-95'); setTimeout(() => document.getElementById('alertModal').classList.add('hidden'), 200); }
+        
+        function formatDate(e) { let v = e.target.value.replace(/\D/g, ''); if (v.length >= 5) e.target.value = v.substring(0,2) + '/' + v.substring(2,4) + '/' + v.substring(4,8); else if (v.length >= 3) e.target.value = v.substring(0,2) + '/' + v.substring(2); else e.target.value = v; }
+        
+        function formatDisplayDate(dateStr) {
+            if(!dateStr) return '-';
+            let str = dateStr.toString().trim();
+            if(str.includes('/')) return str;
+            if(str.includes('T') || (str.includes('-') && str.length >= 10)) {
+                let parts = str.split('T')[0].split('-');
+                if(parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+            return str;
+        }
+
+        function parseDateString(str) { 
+            if(!str) return null; 
+            let cleanStr = formatDisplayDate(str);
+            let p = cleanStr.split('/'); 
+            return p.length===3 ? new Date(p[2], p[1]-1, p[0]) : null; 
+        }
+
+        function sendToCloud(action, dataObj) {
+            const url = localStorage.getItem('tg_script_url'); if(!url) return;
+            document.getElementById('cloudStatus').innerHTML = '<i class="fas fa-sync fa-spin text-glamur-gold mr-1"></i>';
+            const formData = new URLSearchParams(); formData.append('action', action); if(dataObj) formData.append('data', JSON.stringify(dataObj));
+            fetch(url, { method: 'POST', body: formData }).then(res => res.text()).then(text => {
+                try { let res = JSON.parse(text); if(res.status === 'success') { document.getElementById('cloudStatus').innerHTML = '<i class="fas fa-cloud text-green-400"></i>'; } else { document.getElementById('cloudStatus').innerHTML = '<i class="fas fa-exclamation text-red-500"></i>'; } } catch(e) {}
+            }).catch(err => { document.getElementById('cloudStatus').innerHTML = '<i class="fas fa-wifi text-red-500"></i>'; });
+        }
+
+        // ================= SINCRONIZACIÓN BLINDADA =================
+        function syncFromCloud() {
+            const url = localStorage.getItem('tg_script_url'); 
+            if(!url) return showAlert('warning', 'Sin Conexión', 'Pega tu URL en Ajustes.');
+            
+            document.getElementById('cloudStatus').innerHTML = '<i class="fas fa-sync fa-spin text-glamur-gold mr-1"></i> Sincronizando...';
+            const syncUrl = `${url}?action=syncAll`;
+            
+            fetch(syncUrl, { method: 'GET', redirect: 'follow' })
+            .then(res => res.text())
+            .then(text => {
+                let res;
+                try { res = JSON.parse(text); } catch(e) { throw new Error("La respuesta no es un JSON válido. Verifica que hayas hecho una NUEVA implementación en Apps Script."); }
+
+                if(res.status === 'success') {
+                    products = (res.data.products || []).map(p => ({
+                        ...p,
+                        nombre: String(p.nombre || ''),
+                        marca: String(p.marca || ''),
+                        codigoBarras: String(p.codigoBarras || ''),
+                        variante: String(p.variante || ''),
+                        categoria: String(p.categoria || '')
+                    }));
+
+                    sales = (res.data.sales || []).map(s => ({
+                        ...s,
+                        cliente: String(s.cliente || ''),
+                        productos: String(s.productos || '')
+                    }));
+
+                    clients = (res.data.clients || []).map(c => ({
+                        ...c,
+                        nombre: String(c.nombre || ''),
+                        apellido: String(c.apellido || ''),
+                        telefono: String(c.telefono || '')
+                    }));
+
+                    saveData(); 
+                    renderStock(); 
+                    renderDashboard(); 
+                    renderClients(); 
+                    document.getElementById('cloudStatus').innerHTML = '<i class="fas fa-cloud text-green-400"></i>'; 
+                    showAlert('success', 'Sincronizado', 'Datos actualizados correctamente desde la nube.'); 
+                } else {
+                    showAlert('error', 'Error API', res.message || 'Error desconocido');
+                    document.getElementById('cloudStatus').innerHTML = '<i class="fas fa-exclamation text-red-500"></i>';
+                }
+            })
+            .catch(err => {
+                document.getElementById('cloudStatus').innerHTML = '<i class="fas fa-wifi text-red-500"></i>'; 
+                showAlert('error', 'Error de Red', err.message || 'No se pudo conectar con Apps Script.');
+            });
+        }
+
+        // ================= DASHBOARD =================
+        function renderDashboard() {
+            let ingresos = 0, deudaTotal = 0, expArr = [], prodCount = {}, mSales = {}, deudores = {};
+            products.forEach(p => { if(p.vencimiento && p.stock>0) { let dDate = parseDateString(p.vencimiento); if(dDate) { let d = Math.ceil((dDate - new Date())/86400000); if(d<=30 && d>=0) expArr.push(`⚠️ ${p.nombre} (${d}d)`); else if(d<0) expArr.push(`❌ ${p.nombre} VENCIDO`); } } });
+            
+            sales.forEach(s => {
+                ingresos += (s.pagado !== undefined ? Number(s.pagado) : Number(s.total));
+                if(Number(s.deuda) > 0) { 
+                    deudaTotal += Number(s.deuda); 
+                    deudores[s.cliente] = (deudores[s.cliente]||0) + Number(s.deuda); 
+                }
+                
+                if(s.items && Array.isArray(s.items)) {
+                    s.items.forEach(item => {
+                        let keyName = `${item.marca ? item.marca + ' ' : ''}${item.nombre} (${item.variante || 'General'})`;
+                        prodCount[keyName] = (prodCount[keyName] || 0) + parseInt(item.cantidad || 1);
+                    });
+                } else if(s.productos) {
+                    s.productos.split(',').forEach(i => {
+                        let parts = i.trim().split('x ');
+                        if(parts.length >= 2) {
+                            let qty = parseInt(parts[0]) || 1;
+                            let pName = parts.slice(1).join('x ').trim();
+                            prodCount[pName] = (prodCount[pName] || 0) + qty;
+                        }
+                    });
+                }
+
+                let m = new Date(s.fecha.split(',')[0].split('/').reverse().join('-') || s.fecha).toLocaleString('es-ES', {month:'short', year:'2-digit'}); 
+                mSales[m] = (mSales[m]||0) + Number(s.total);
+            });
+            
+            document.getElementById('dashVentas').innerText = `$${ingresos}`; document.getElementById('dashDeuda').innerText = `$${deudaTotal}`;
+            document.getElementById('dashAlerts').innerHTML = expArr.length ? `<div class="bg-orange-100 text-orange-800 p-2 rounded text-xs border border-orange-200"><b>Vencimientos:</b><br>${expArr.join('<br>')}</div>` : '';
+            
+            let dbHtml = Object.keys(deudores).length === 0 ? '<p class="text-xs text-gray-500 text-center py-4">Nadie te debe plata 🎉</p>' : '';
+            Object.keys(deudores).sort().forEach(c => { 
+                let clientObj = clients.find(x => `${x.nombre} ${x.apellido}`.trim() === c.trim());
+                let phone = clientObj ? clientObj.telefono : '';
+                dbHtml += `<li class="flex justify-between items-center bg-white p-2.5 rounded border border-red-100 shadow-sm">
+                    <div><span class="font-bold text-gray-800 block text-xs">${c}</span><span class="text-red-600 font-black text-xs">$${deudores[c]}</span></div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="sendDebtWhatsApp('${c}', ${deudores[c]}, '${phone}')" class="bg-green-500 text-white text-[10px] px-2 py-1 rounded font-bold shadow active:scale-95" title="Enviar WhatsApp"><i class="fab fa-whatsapp"></i></button>
+                        <button onclick="openPayDebt('${c}', ${deudores[c]})" class="bg-glamur text-white text-[10px] px-2.5 py-1 rounded font-bold shadow active:scale-95">Cobrar</button>
+                    </div>
+                </li>`; 
+            });
+            document.getElementById('dashDebtorsList').innerHTML = dbHtml;
+
+            let topP = Object.keys(prodCount).sort((a,b)=>prodCount[b]-prodCount[a]).slice(0,5);
+            document.getElementById('dashTopProducts').innerHTML = topP.length ? topP.map((n,i)=>`<li class="flex justify-between text-xs border-b pb-1"><span><b>#${i+1}</b> ${n}</span><span class="bg-gray-200 px-1 rounded font-bold">${prodCount[n]}</span></li>`).join('') : '<p class="text-xs text-center text-gray-400">Sin ventas registradas</p>';
+            
+            if(chartSalesInstance) chartSalesInstance.destroy();
+            chartSalesInstance = new Chart(document.getElementById('chartSales'), { 
+                type: 'bar', 
+                data: { labels: Object.keys(mSales), datasets: [{ label: 'Ventas ($)', data: Object.values(mSales), backgroundColor: '#9d4edd', borderRadius: 4 }] }, 
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { font: { size: 10 } } }, x: { ticks: { font: { size: 10 } } } } } 
+            });
+        }
+
+        function sendDebtWhatsApp(cliente, deuda, phone) {
+            let msg = `Hola *${cliente}*! 👋 Te escribimos de *Tu Glamur* para recordarte que tenés un saldo pendiente de pago por *$${deuda}*. 💳✨ Avisanos cuando puedas regularizarlo. ¡Muchas gracias!`;
+            let url = `https://api.whatsapp.com/send?phone=${phone.replace(/\D/g,'')}&text=${encodeURIComponent(msg)}`;
+            window.open(url, '_blank');
+        }
+
+        function openPayDebt(cliente, totalDeuda) { 
+            activeDebtClient = cliente; 
+            document.getElementById('payDebtClientName').innerText = cliente; 
+            document.getElementById('payDebtTotal').innerText = `$${totalDeuda}`; 
+            document.getElementById('payDebtAmount').value = totalDeuda; 
+            document.getElementById('payDebtMethod').value = "Efectivo";
+            openModal('payDebtModal'); 
+        }
+
+        function processDebtPayment() {
+            let amount = parseInt(document.getElementById('payDebtAmount').value) || 0; 
+            let payMethod = document.getElementById('payDebtMethod').value;
+            if(amount <= 0) return showAlert('warning', 'Error', 'Ingresa un monto válido.');
+            
+            let remaining = amount; 
+            let clientSales = sales.filter(s => s.cliente === activeDebtClient && Number(s.deuda) > 0);
+            clientSales.forEach(s => { 
+                if(remaining > 0) { 
+                    let pagoApli = Math.min(Number(s.deuda), remaining); 
+                    s.pagado = Number(s.pagado) + pagoApli; 
+                    s.deuda = Number(s.deuda) - pagoApli; 
+                    remaining -= pagoApli; 
+                } 
+            });
+            saveData(); 
+            sendToCloud('payDebt', {cliente: activeDebtClient, monto: amount, metodoPago: payMethod}); 
+            closeModal('payDebtModal'); 
+            renderDashboard(); 
+            showAlert('success', 'Pago Registrado', `Se registraron $${amount} vía ${payMethod}`);
+        }
+
+        // ================= CLIENTES (ORDENADOS POR APELLIDO) =================
+        function openClientModal(id = null) {
+            document.getElementById('formClient').reset();
+            if(id) { 
+                let c = clients.find(x => x.id.toString() === id.toString()); 
+                if(c) { 
+                    document.getElementById('clientModalTitle').innerHTML = '<i class="fas fa-edit mr-2 text-glamur-gold"></i> Editar Cliente'; 
+                    document.getElementById('clientId').value = c.id; 
+                    document.getElementById('clientFirstName').value = c.nombre; 
+                    document.getElementById('clientLastName').value = c.apellido; 
+                    document.getElementById('clientPhone').value = c.telefono; 
+                    document.getElementById('clientBday').value = formatDisplayDate(c.cumpleanos); 
+                } 
+            } else { 
+                document.getElementById('clientModalTitle').innerHTML = '<i class="fas fa-user-plus mr-2 text-glamur-gold"></i> Nuevo Cliente'; 
+                document.getElementById('clientId').value = ''; 
+            } 
+            openModal('clientModal');
+        }
+
+        document.getElementById('formClient').addEventListener('submit', function(e) {
+            e.preventDefault(); 
+            let cData = { 
+                id: document.getElementById('clientId').value || 'C-'+Date.now(), 
+                nombre: document.getElementById('clientFirstName').value.trim(), 
+                apellido: document.getElementById('clientLastName').value.trim(), 
+                telefono: document.getElementById('clientPhone').value.trim(), 
+                cumpleanos: document.getElementById('clientBday').value 
+            };
+            let ex = clients.findIndex(x => x.id.toString() === cData.id.toString()); 
+            if(ex >= 0) { clients[ex] = cData; sendToCloud('editClient', cData); } else { clients.push(cData); sendToCloud('addClient', cData); }
+            saveData(); renderClients(); closeModal('clientModal'); showAlert('success', 'Guardado', `${cData.apellido}, ${cData.nombre}`);
+        });
+
+        function renderClients() {
+            const list = document.getElementById('clientList'); 
+            const t = (document.getElementById('searchClient').value || '').toLowerCase(); 
+            
+            // ORDEN ALFABÉTICO POR APELLIDO
+            let sortedClients = [...clients].sort((a, b) => {
+                let apA = (a.apellido || '').toLowerCase();
+                let apB = (b.apellido || '').toLowerCase();
+                if (apA !== apB) return apA.localeCompare(apB);
+                return (a.nombre || '').toLowerCase().localeCompare((b.nombre || '').toLowerCase());
+            });
+
+            list.innerHTML = sortedClients.filter(c => (`${c.nombre} ${c.apellido}`).toLowerCase().includes(t)).map(c => {
+                let fullName = `${c.apellido}, ${c.nombre}`;
+                let clientSales = sales.filter(s => s.cliente.trim().toLowerCase() === `${c.nombre} ${c.apellido}`.trim().toLowerCase());
+                let totalDeudaClient = clientSales.reduce((acc, s) => acc + (Number(s.deuda) || 0), 0);
+                let cleanBday = formatDisplayDate(c.cumpleanos);
+                
+                return `<li class="p-3 border-b flex justify-between items-center bg-white active:bg-gray-50 cursor-pointer" onclick="openClientHistory('${c.id}')">
+                    <div>
+                        <p class="font-bold text-gray-800 text-sm">${fullName}</p>
+                        <p class="text-xs text-gray-500"><i class="fab fa-whatsapp text-green-500"></i> ${c.telefono||'-'} ${cleanBday !== '-' ? `| <i class="fas fa-birthday-cake text-purple-400"></i> ${cleanBday}` : ''}</p>
+                    </div>
+                    <div class="text-right">
+                        ${totalDeudaClient > 0 ? `<span class="text-xs font-black text-red-500 bg-red-50 px-2 py-1 rounded border border-red-200">Debe: $${totalDeudaClient}</span>` : `<span class="text-xs text-green-600 font-semibold">Al día</span>`}
+                    </div>
+                </li>`;
+            }).join('');
+            
+            document.getElementById('clientDataList').innerHTML = sortedClients.map(c => `<option value="${c.nombre} ${c.apellido}">`).join('');
+        }
+
+        function openClientHistory(clientId) {
+            currentViewingClientId = clientId;
+            let c = clients.find(x => x.id.toString() === clientId.toString());
+            if(!c) return;
+            let fullName = `${c.nombre} ${c.apellido}`;
+            document.getElementById('clientHistoryTitle').innerHTML = `<i class="fas fa-user-circle mr-2"></i> ${c.apellido}, ${c.nombre}`;
+            
+            let clientSales = sales.filter(s => s.cliente.trim().toLowerCase() === fullName.trim().toLowerCase());
+            let contentDiv = document.getElementById('clientHistoryContent');
+            
+            if(clientSales.length === 0) {
+                contentDiv.innerHTML = `<p class="text-center text-gray-400 text-sm py-6">Este cliente aún no registra compras.</p>`;
+            } else {
+                contentDiv.innerHTML = clientSales.reverse().map(s => `
+                    <div class="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-1">
+                        <div class="flex justify-between text-xs text-gray-500 border-b pb-1">
+                            <span><i class="fas fa-calendar-alt"></i> ${s.fecha}</span>
+                            <span class="font-bold text-glamur">${s.metodoPago}</span>
+                        </div>
+                        <p class="text-xs font-bold text-gray-800 mt-1">Productos:</p>
+                        <p class="text-xs text-gray-600 font-mono bg-white p-2 rounded border">${s.productos}</p>
+                        <div class="flex justify-between items-center text-xs pt-1 font-bold">
+                            <span>Total: $${s.total}</span>
+                            ${Number(s.deuda) > 0 ? `<span class="text-red-500">Debe: $${s.deuda}</span>` : `<span class="text-green-600">Pagado 100%</span>`}
+                        </div>
+                    </div>
+                `).join('');
+            }
+            openModal('clientHistoryModal');
+        }
+
+        function editSelectedClientFromHistory() {
+            closeModal('clientHistoryModal');
+            if(currentViewingClientId) openClientModal(currentViewingClientId);
+        }
+
+        // ================= PRODUCTOS & VALIDACIÓN DE DUPLICADOS =================
+        function autoCalculatePrice(c,p,i){ let cost=Math.round(parseFloat(document.getElementById(c).value))||0; if(cost>0)document.getElementById(p).value=Math.round(cost*1.5); else document.getElementById(p).value=""; updateMarginInfo(c,p,i); }
+        function updateMarginInfo(c,p,i){ let cost=Math.round(parseFloat(document.getElementById(c).value))||0, price=Math.round(parseFloat(document.getElementById(p).value))||0, info=document.getElementById(i); info.className="text-xs font-bold text-center mt-1 h-4"; if(cost>0&&price>0){ let prof=price-cost; if(prof>=0){ info.innerText=`Limpio: $${prof}`; info.classList.add('text-glamur'); } else { info.innerText=`⚠️ Pérdida: $${Math.abs(prof)}`; info.classList.add('text-red-500'); } } else info.innerText=""; }
+
+        function checkExistingBarcode(code) {
+            if (!code) return;
+            let existing = products.find(p => String(p.codigoBarras || '').trim() === String(code).trim());
+            let currentId = document.getElementById('productId').value;
+            // Si es un producto nuevo o editando otro código existente
+            if (existing && existing.id.toString() !== currentId.toString()) {
+                showAlert('warning', 'Producto Duplicado', `El código "${code}" ya pertenece a: ${existing.nombre} (${existing.variante || 'General'})`);
+            } else if (existing) {
+                document.getElementById('productBrand').value = existing.marca || '';
+                document.getElementById('productName').value = existing.nombre || '';
+                document.getElementById('productCat').value = existing.categoria || 'Maquillaje';
+                document.getElementById('productCost').value = existing.costo || '';
+                document.getElementById('productPrice').value = existing.precio || '';
+                updateMarginInfo('productCost', 'productPrice', 'productMarginInfo');
+            }
+        }
+
+        function openProductModal(id = null) {
+            document.getElementById('formProduct').reset(); 
+            document.getElementById('productMarginInfo').innerText = '';
+            if(id !== null && id !== undefined && id !== '') { 
+                let p = products.find(x => x.id.toString() === id.toString()); 
+                if(p) { 
+                    document.getElementById('productModalTitle').innerHTML = '<i class="fas fa-edit mr-2 text-glamur-gold"></i> Editar Producto'; 
+                    document.getElementById('productId').value = p.id; 
+                    document.getElementById('productBarcode').value = p.codigoBarras; 
+                    document.getElementById('productBrand').value = p.marca || ''; 
+                    document.getElementById('productCat').value = p.categoria || 'Maquillaje'; 
+                    document.getElementById('productName').value = p.nombre; 
+                    document.getElementById('productVar').value = p.variante || ''; 
+                    document.getElementById('productCost').value = p.costo; 
+                    document.getElementById('productPrice').value = p.precio; 
+                    document.getElementById('productStock').value = p.stock; 
+                    document.getElementById('productExp').value = formatDisplayDate(p.vencimiento); 
+                    updateMarginInfo('productCost', 'productPrice', 'productMarginInfo'); 
+                } 
+            } else { 
+                document.getElementById('productModalTitle').innerHTML = '<i class="fas fa-box-open mr-2 text-glamur-gold"></i> Nuevo Producto'; 
+                document.getElementById('productId').value = ''; 
+                document.getElementById('productStock').value = 1; 
+            } 
+            openModal('productModal');
+        }
+
+        document.getElementById('formProduct').addEventListener('submit', function(e) {
+            e.preventDefault(); 
+            let pId = document.getElementById('productId').value;
+            let barcode = String(document.getElementById('productBarcode').value || '').trim();
+            
+            // VALIDACIÓN ESTRICTA DE DUPLICADOS AL GUARDAR
+            let duplicate = products.find(p => String(p.codigoBarras || '').trim() === barcode && p.id.toString() !== pId.toString());
+            if (duplicate) {
+                return showAlert('error', 'No se puede guardar', `Ya existe un producto con el código "${barcode}": ${duplicate.nombre}`);
+            }
+
+            let pData = { 
+                id: pId && pId !== "" ? pId : Date.now().toString(), 
+                codigoBarras: barcode, 
+                marca: String(document.getElementById('productBrand').value || '').trim(), 
+                nombre: String(document.getElementById('productName').value || '').trim(), 
+                categoria: document.getElementById('productCat').value, 
+                variante: String(document.getElementById('productVar').value || '').trim(), 
+                costo: Math.round(parseFloat(document.getElementById('productCost').value) || 0), 
+                precio: Math.round(parseFloat(document.getElementById('productPrice').value) || 0), 
+                stock: parseInt(document.getElementById('productStock').value) || 0, 
+                vencimiento: document.getElementById('productExp').value 
+            };
+            
+            let ex = products.findIndex(p => p.id.toString() === pData.id.toString()); 
+            if(ex >= 0) { 
+                products[ex] = pData; 
+                sendToCloud('editProduct', pData); 
+            } else { 
+                products.push(pData); 
+                sendToCloud('addProduct', pData); 
+            }
+            saveData(); 
+            renderStock(); 
+            closeModal('productModal'); 
+            showAlert('success', 'Guardado', 'Producto actualizado correctamente.');
+        });
+        
+        function renderStock() {
+            const list = document.getElementById('stockList'); 
+            const searchInput = document.getElementById('searchStock');
+            const t = searchInput ? searchInput.value.toLowerCase().trim() : '';
+            
+            let totalUnits = 0, totalCost = 0, totalSaleValue = 0, totalSoldUnits = 0;
+            products.forEach(p => {
+                let st = Number(p.stock) || 0;
+                totalUnits += st;
+                totalCost += (Number(p.costo) || 0) * st;
+                totalSaleValue += (Number(p.precio) || 0) * st;
+            });
+            sales.forEach(s => {
+                if(s.items && Array.isArray(s.items)) {
+                    s.items.forEach(i => totalSoldUnits += (Number(i.cantidad) || 0));
+                } else if(s.productos) {
+                    s.productos.split(',').forEach(i => {
+                        let parts = i.trim().split('x ');
+                        if(parts.length >= 2) totalSoldUnits += (parseInt(parts[0]) || 1);
+                    });
+                }
+            });
+
+            document.getElementById('metricUnits').innerText = totalUnits;
+            document.getElementById('metricSold').innerText = totalSoldUnits;
+            document.getElementById('metricCost').innerText = `$${totalCost}`;
+            document.getElementById('metricSaleValue').innerText = `$${totalSaleValue}`;
+            document.getElementById('metricPotentialProfit').innerText = `$${totalSaleValue - totalCost}`;
+
+            let sortedProducts = [...products].sort((a, b) => `${a.nombre} ${a.variante}`.localeCompare(`${b.nombre} ${b.variante}`));
+
+            let filtered = sortedProducts.filter(p => {
+                let name = String(p.nombre || '').toLowerCase();
+                let brand = String(p.marca || '').toLowerCase();
+                let code = String(p.codigoBarras || '').toLowerCase();
+                let variant = String(p.variante || '').toLowerCase();
+                return name.includes(t) || brand.includes(t) || code.includes(t) || variant.includes(t);
+            });
+
+            list.innerHTML = filtered.map(p => `
+                <li class="p-3 flex justify-between items-center border-b active:bg-gray-50 cursor-pointer" onclick="openProductModal('${p.id}')">
+                    <div class="flex-1">
+                        <p class="font-bold text-gray-800 text-sm">
+                            ${p.marca ? `<span class="text-glamur uppercase text-[10px] mr-1">${p.marca}</span>` : ''}
+                            ${p.nombre} 
+                            <span class="text-xs font-normal text-gray-500">(${p.variante || 'General'})</span>
+                        </p>
+                        <p class="text-[10px] text-gray-400 mt-1"><i class="fas fa-barcode"></i> ${p.codigoBarras}</p>
+                        <p class="text-sm font-bold text-glamur mt-1">$${p.precio} <span class="text-[10px] text-gray-400 font-normal">($${p.costo})</span></p>
+                    </div>
+                    <div class="text-center p-2 rounded-lg border ${Number(p.stock) <= 2 ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-500'} min-w-[50px]">
+                        <span class="block text-[9px] font-bold">Stock</span>
+                        <span class="text-lg font-black">${p.stock}</span>
+                    </div>
+                </li>`).join('');
+        }
+
+        // ================= BUSCADOR FLOTANTE TÁCTIL PARA POS (CELULAR Y PC) =================
+        function filterPOSProducts(query) {
+            const dropdown = document.getElementById('posDropdown');
+            const q = query.toLowerCase().trim();
+            
+            if(!q) {
+                dropdown.classList.add('hidden');
+                dropdown.innerHTML = '';
+                return;
+            }
+
+            let sortedProducts = [...products].sort((a, b) => `${a.nombre} ${a.variante}`.localeCompare(`${b.nombre} ${b.variante}`));
+            let filtered = sortedProducts.filter(p => {
+                let name = String(p.nombre || '').toLowerCase();
+                let brand = String(p.marca || '').toLowerCase();
+                let code = String(p.codigoBarras || '').toLowerCase();
+                let variant = String(p.variante || '').toLowerCase();
+                return name.includes(q) || brand.includes(q) || code.includes(q) || variant.includes(q);
+            }).slice(0, 15); // Mostrar máximo 15 resultados para velocidad
+
+            if(filtered.length === 0) {
+                dropdown.innerHTML = `<div class="p-3 text-xs text-gray-400 text-center">No se encontraron productos</div>`;
+            } else {
+                dropdown.innerHTML = filtered.map(p => `
+                    <div onclick="selectPOSProduct('${p.id}', '${p.marca ? p.marca + ' ' : ''}${p.nombre} (${p.variante || 'General'}) - $${p.precio} (Stk: ${p.stock})')" class="p-2.5 hover:bg-purple-50 border-b cursor-pointer flex justify-between items-center text-xs">
+                        <div>
+                            <p class="font-bold text-gray-800">${p.marca ? `<span class="text-glamur font-semibold">${p.marca}</span> ` : ''}${p.nombre} <span class="text-gray-500 font-normal">(${p.variante || 'General'})</span></p>
+                            <p class="text-[10px] text-gray-400">SKU: ${p.codigoBarras} | Stk: ${p.stock}</p>
+                        </div>
+                        <span class="font-black text-glamur text-sm">$${p.precio}</span>
+                    </div>
+                `).join('');
+            }
+            dropdown.classList.remove('hidden');
+        }
+
+        function selectPOSProduct(id, displayName) {
+            document.getElementById('posSearchInput').value = displayName;
+            document.getElementById('posSelectedId').value = id;
+            document.getElementById('posDropdown').classList.add('hidden');
+        }
+
+        // Ocultar dropdown si hace clic fuera
+        document.addEventListener('click', function(e) {
+            const searchInput = document.getElementById('posSearchInput');
+            const dropdown = document.getElementById('posDropdown');
+            if (searchInput && dropdown && !searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+
+        function addSelectedToCart() { 
+            const idProd = document.getElementById('posSelectedId').value;
+            const q = parseInt(document.getElementById('posQty').value) || 1; 
+            
+            if(!idProd) return showAlert('warning', 'Atención', 'Selecciona un producto válido del buscador.'); 
+            
+            let p = products.find(x => x.id.toString() === idProd.toString()); 
+            if(p && Number(p.stock) >= q) { 
+                let i = cart.find(x => x.id.toString() === idProd.toString()); 
+                if(i) { 
+                    if(i.cantidad + q <= Number(p.stock)) i.cantidad += q; 
+                    else return showAlert('warning', 'Límite', 'No hay suficiente stock disponible.'); 
+                } else { 
+                    cart.push({...p, cantidad: q}); 
+                }
+                renderCart(); 
+                if(navigator.vibrate) navigator.vibrate(50); 
+            } else {
+                showAlert('error', 'Sin Stock', `Stock disponible: ${p ? p.stock : 0}.`); 
+            }
+            
+            document.getElementById('posSearchInput').value = ''; 
+            document.getElementById('posSelectedId').value = ''; 
+            document.getElementById('posQty').value = 1; 
+            document.getElementById('posDropdown').classList.add('hidden');
+        }
+
+        function renderCart() { 
+            let tot = 0, cnt = 0; 
+            document.getElementById('cartList').innerHTML = cart.map((i, idx) => { 
+                let sub = Math.round(Number(i.precio) * Number(i.cantidad)); 
+                tot += sub; 
+                cnt += Number(i.cantidad); 
+                return `<div class="flex justify-between items-center bg-gray-50 p-2 rounded border mb-1 text-sm">
+                    <div class="flex-1">
+                        <p class="font-bold">${i.nombre} <span class="text-xs text-glamur font-semibold">(${i.variante || 'General'})</span></p>
+                        <p class="text-[10px] text-gray-500">$${i.precio} x ${i.cantidad}</p>
+                    </div>
+                    <div class="font-bold text-glamur mr-2">$${sub}</div>
+                    <button onclick="cart.splice(${idx},1); renderCart();" class="text-red-400 p-1"><i class="fas fa-trash"></i></button>
+                </div>`; 
+            }).join(''); 
+            cartTotalMemo = tot; 
+            document.getElementById('cartTotal').innerText = `$${tot}`; 
+            document.getElementById('cartCount').innerText = cnt; 
+        }
+        
+        function openCheckout() { 
+            if(!cart.length) return showAlert('warning', 'Vacío', 'Agrega productos.'); 
+            document.getElementById('checkClient').value = ''; 
+            document.getElementById('checkTotal').innerText = `$${cartTotalMemo}`; 
+            document.getElementById('checkPagado').value = cartTotalMemo; 
+            calcDeuda(); 
+            openModal('checkoutModal'); 
+        }
+
+        function calcDeuda() { let pagado = parseInt(document.getElementById('checkPagado').value) || 0; let deuda = cartTotalMemo - pagado; if(deuda < 0) { document.getElementById('checkDeuda').innerText = "Vuelto: $" + Math.abs(deuda); document.getElementById('checkDeuda').classList.replace('text-red-600', 'text-green-600'); } else { document.getElementById('checkDeuda').innerText = "$" + deuda; document.getElementById('checkDeuda').classList.replace('text-green-600', 'text-red-600'); } }
+        
+        function confirmSale() { 
+            let cli = document.getElementById('checkClient').value.trim(); 
+            if(!cli || cli.toLowerCase() === 'consumidor final') {
+                return showAlert('warning', 'Cliente Requerido', 'Debes cargar o seleccionar un cliente registrado para realizar la venta.');
+            }
+
+            let meth = document.getElementById('checkMethod').value; 
+            let pagado = parseInt(document.getElementById('checkPagado').value) || 0; 
+            let deuda = cartTotalMemo - pagado; 
+            if(deuda < 0) { pagado = cartTotalMemo; deuda = 0; } 
+            
+            cart.forEach(i => { 
+                let pIdx = products.findIndex(p => p.id.toString() === i.id.toString()); 
+                if(pIdx >= 0) products[pIdx].stock = Number(products[pIdx].stock) - Number(i.cantidad); 
+            }); 
+            
+            let saleData = { 
+                id: 'V-'+Date.now(), 
+                fecha: new Date().toLocaleString(), 
+                cliente: cli, 
+                metodoPago: meth, 
+                productos: cart.map(i => `${i.cantidad}x ${i.marca ? i.marca + ' ' : ''}${i.nombre} (${i.variante || 'General'})`).join(', '), 
+                total: cartTotalMemo, 
+                pagado: pagado, 
+                deuda: deuda, 
+                items: [...cart] 
+            }; 
+            sales.push(saleData); 
+            saveData(); 
+            sendToCloud('addSale', saleData); 
+
+            lastTicketText = `✨ *TU GLAMUR - COMPROBANTE DE VENTA* ✨\n`;
+            lastTicketText += `📅 Fecha: ${saleData.fecha}\n`;
+            lastTicketText += `👤 Cliente: ${cli}\n`;
+            lastTicketText += `--------------------------------\n`;
+            cart.forEach(i => {
+                lastTicketText += `• ${i.cantidad}x ${i.nombre} (${i.variante || 'General'}) - $${i.precio * i.cantidad}\n`;
+            });
+            lastTicketText += `--------------------------------\n`;
+            lastTicketText += `💰 *TOTAL: $${cartTotalMemo}*\n`;
+            lastTicketText += `💵 Abonado: $${pagado}\n`;
+            if(deuda > 0) lastTicketText += `⚠️ Queda debiendo: $${deuda}\n`;
+            lastTicketText += `💳 Pago con: ${meth}\n\n`;
+            lastTicketText += `¡Muchas gracias por tu compra! 💕`;
+
+            document.getElementById('ticketPreview').innerText = lastTicketText;
+
+            cart = []; 
+            renderCart(); 
+            renderStock(); 
+            renderDashboard(); 
+            closeModal('checkoutModal'); 
+            openModal('ticketModal');
+        }
+
+        function shareTicketWhatsApp() {
+            let clientName = document.getElementById('checkClient').value.trim();
+            let clientObj = clients.find(x => `${x.nombre} ${x.apellido}`.trim() === clientName);
+            let phone = clientObj ? clientObj.telefono : '';
+            let url = `https://api.whatsapp.com/send?phone=${phone.replace(/\D/g,'')}&text=${encodeURIComponent(lastTicketText)}`;
+            window.open(url, '_blank');
+        }
+
+        // ================= CÁMARA =================
+        function startScannerAddProduct() { 
+            document.getElementById('readerAddProduct').classList.remove('hidden'); 
+            html5QrcodeScanner = new Html5Qrcode("readerAddProduct"); 
+            html5QrcodeScanner.start(
+                { facingMode: "environment" }, 
+                { 
+                    fps: 15, 
+                    qrbox: { width: 280, height: 120 },
+                    advanced: [{ zoom: 2.0, focusMode: "macro" }] 
+                }, 
+                (c) => { 
+                    document.getElementById('productBarcode').value = c; 
+                    checkExistingBarcode(c); 
+                    stopScanner(); 
+                }, 
+                (e) => {}
+            ).catch(e => { stopScanner(); }); 
+        }
+
+        document.getElementById('btnStartScanner').addEventListener('click', () => { 
+            document.getElementById('reader').classList.remove('hidden'); 
+            document.getElementById('btnStartScanner').classList.add('hidden'); 
+            document.getElementById('btnStopScanner').classList.remove('hidden'); 
+            html5QrcodeScanner = new Html5Qrcode("reader"); 
+            html5QrcodeScanner.start(
+                { facingMode: "environment" }, 
+                { 
+                    fps: 15, 
+                    qrbox: { width: 280, height: 160 },
+                    advanced: [{ zoom: 2.2, focusMode: "macro" }] 
+                }, 
+                (c) => { 
+                    stopScanner(); 
+                    let p = products.find(x => String(x.codigoBarras || '').trim() === String(c).trim()); 
+                    if(p && Number(p.stock) > 0) { 
+                        let i = cart.find(x => x.id.toString() === p.id.toString()); 
+                        if(i) { 
+                            if(i.cantidad < Number(p.stock)) i.cantidad++; 
+                            else return showAlert('warning', 'Límite', 'No hay más stock.');
+                        } else { 
+                            cart.push({...p, cantidad: 1}); 
+                        }
+                        renderCart(); 
+                        if(navigator.vibrate) navigator.vibrate(50); 
+                    } else {
+                        showAlert('error', 'No encontrado', `Código escaneado: ${c} sin stock o no registrado.`);
+                    }
+                }, 
+                (e) => {}
+            ).catch(e => {
+                showAlert('error', 'Cámara', 'No se pudo activar la cámara macro.');
+                stopScanner();
+            }); 
+        });
+
+        function stopScanner() { 
+            if(html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => { 
+                    document.getElementById('reader').classList.add('hidden'); 
+                    document.getElementById('readerAddProduct').classList.add('hidden'); 
+                    document.getElementById('btnStartScanner').classList.remove('hidden'); 
+                    document.getElementById('btnStopScanner').classList.add('hidden'); 
+                    html5QrcodeScanner = null;
+                }).catch(err => {
+                    document.getElementById('reader').classList.add('hidden');
+                    document.getElementById('readerAddProduct').classList.add('hidden');
+                    document.getElementById('btnStartScanner').classList.remove('hidden');
+                    document.getElementById('btnStopScanner').classList.add('hidden');
+                }); 
+            } 
+        }
+        
+        function saveData() { localStorage.setItem('tg_products', JSON.stringify(products)); localStorage.setItem('tg_sales', JSON.stringify(sales)); localStorage.setItem('tg_clients', JSON.stringify(clients)); }
+        function saveSettings() { localStorage.setItem('tg_script_url', document.getElementById('scriptUrl').value); localStorage.setItem('tg_sheet_url', document.getElementById('sheetUrl').value); loadSettings(); showAlert('success', 'Guardado', 'Enlaces actualizados.'); }
+        function loadSettings() { let sUrl = localStorage.getItem('tg_script_url'); if(sUrl) { document.getElementById('scriptUrl').value = sUrl; document.getElementById('cloudStatus').innerHTML = '<i class="fas fa-cloud text-green-400"></i>'; } document.getElementById('sheetUrl').value = localStorage.getItem('tg_sheet_url')||''; }
+        function openSheet() { let u = document.getElementById('sheetUrl').value; if(u && u.includes('http')) window.open(u, '_blank'); else showAlert('warning', 'Error', 'Pega el link de Google Sheets primero.'); }
+        function clearAllData() { if(confirm("¿Borrar todos los datos del celular?")) { localStorage.clear(); products=[]; sales=[]; clients=[]; renderStock(); renderDashboard(); renderClients(); document.getElementById('scriptUrl').value=''; document.getElementById('sheetUrl').value=''; } }
+        function promptInflation() { const p = prompt("¿Qué % aumentar?"); if(p && !isNaN(p)) { let f = 1+(parseFloat(p)/100); products.forEach(x => { x.costo = Math.round(x.costo*f); x.precio = Math.round(x.precio*f); }); saveData(); sendToCloud('updateInflation', {porcentaje: parseFloat(p)}); renderStock(); renderDashboard(); } }
+    </script>
+</body>
+</html>
